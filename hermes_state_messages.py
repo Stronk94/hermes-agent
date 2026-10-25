@@ -19,6 +19,8 @@ from agent.message_metadata import (
     index_tool_call_uids, message_uid_or_none, resolve_tool_call_uid, mint_uid, stamp_message_uid)
 from agent.message_sanitization import _sanitize_surrogates, coalesce_tool_call_id
 from hermes_cli.timefmt import coerce_epoch
+# F7.4.6: redação de segredo NA ESCRITA (o valor não nasce na tabela messages).
+from hermes_secret_redaction import redigir_mensagem, redigir_valor
 from hermes_state_common import (
     _COMPRESSION_LOCK_ROW_SQL, _ENDED_ROW_SQL, _RESET_END_REASONS, _RESET_END_REASONS_SQL, _ended_by_compression,
     _json_or, _legacy_reset_child_sql, _placeholders, _sql_json_extract)
@@ -270,7 +272,16 @@ class SessionMessagesMixin(SessionDetachedResultsMixin, SessionTodoResultMixin):
         message_timestamp: float, *, keep_reasoning: bool) -> tuple:
         """Bind values for ``_INSERT_MESSAGE_SQL`` from one message dict (*tool_calls* already parsed;
         *keep_reasoning* False NULLs every reasoning column). ``platform_message_id`` falls back to
-        ``message_id`` (yuanbao's message-dict convention)."""
+        ``message_id`` (yuanbao's message-dict convention).
+
+        Every message writer funnels through here (append, batch, replace, compact, import), so the
+        F7.4.6 redaction lives exactly at this seam: the caller's live dict keeps the real value for
+        the running turn, and only the row that goes to disk carries ``[REDACTED]``."""
+        # F7.4.6: nada de segredo nasce no state.db. *tool_calls* arrives already parsed and is
+        # serialized from HERE (not from msg["tool_calls"]), so it gets its own pass — the arguments
+        # of a tool call are one of the places a key leaks into a row.
+        msg = redigir_mensagem(msg)
+        tool_calls = redigir_valor(tool_calls)
         _str_or_none = lambda v: _scrub_surrogates(v) if isinstance(v, str) else None
         _reasoning = lambda key: msg.get(key) if keep_reasoning else None
         encoded_content = self._encode_content(msg.get("content"))

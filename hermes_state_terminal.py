@@ -8,6 +8,8 @@ import hmac
 import json
 
 from hermes_state_runtime import RuntimeStoreError, _epoch, _json, _row, _secret_digest, _text, admission_fingerprint
+# F7.4.6: redação de segredo NA ESCRITA do blob de resultado (state_meta).
+from hermes_secret_redaction import redigir_valor
 
 RESULT_PREFIX = 'gateway.admission.result.v1.'
 ADMISSION_PREFIX = 'gateway.terminal_admission.v1.'
@@ -63,6 +65,11 @@ def encode_result(result):
     that already has ``_stored`` is stored whole with that value escaped as ``{v: 1, raw: ...}``."""
     if not isinstance(result, dict):
         return result
+    # F7.4.6: this dict is what lands in ``state_meta['gateway.admission.result.v1.*']`` — the other
+    # place the R-16 2nd pass found a key born after the scrub (the whole turn, tool output included).
+    # Redact BEFORE the ``_stored`` comparison so ``content`` and ``final_response`` are compared in
+    # the same (redacted) shape and a secret reply still gets stashed once.
+    result = redigir_valor(result)
     if _STORED in result:
         return {**result, _STORED: {'v': 1, 'raw': result[_STORED]}}
     value = result.get('result')

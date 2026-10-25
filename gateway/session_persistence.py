@@ -11,6 +11,8 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 from utils import atomic_json_write
+# F7.4.6: redação de segredo NA ESCRITA do índice de rotas (sessions.json + gateway_routing).
+from hermes_secret_redaction import redigir_entrada_sessao
 
 if TYPE_CHECKING:
     from gateway.session import SessionEntry, SessionSource
@@ -555,6 +557,10 @@ class SessionPersistenceMixin:
 
     def _persist_routing_data(self, data: dict[str, Any], generation: int) -> None:
         """Serialize all whole-index writers through one durable write lock."""
+        # F7.4.6: the routing entry is the row that carried the raw active_turn_token. Redact ONCE,
+        # here, so both sinks (gateway_routing in state.db and the sessions.json mirror) get the mark.
+        data = {key: redigir_entrada_sessao(entry) if isinstance(entry, dict) else entry
+                for key, entry in data.items()}
         with self._lazy("_save_lock", threading.Lock):
             if generation <= getattr(self, "_persisted_routing_generation", 0):
                 return
@@ -597,7 +603,11 @@ class SessionPersistenceMixin:
 
     def _save_sessions_json(self, data: dict[str, Any]) -> None:
         """Write the legacy sessions.json mirror of the routing index (atomic + fsync)."""
-        atomic_json_write(self.sessions_dir / "sessions.json", {"_README": _SESSIONS_JSON_README, **data}, mode=0o600)
+        # F7.4.6: defence in depth — the mirror is the file auditors grep, so it never carries a
+        # secret even if a caller hands over an entry that skipped the whole-index redaction.
+        limpo = {key: redigir_entrada_sessao(entry) if isinstance(entry, dict) else entry
+                 for key, entry in data.items()}
+        atomic_json_write(self.sessions_dir / "sessions.json", {"_README": _SESSIONS_JSON_README, **limpo}, mode=0o600)
 
     def _save_entries(self) -> None:
         """Snapshot latest state under ``_lock`` and persist after releasing it."""
@@ -622,6 +632,9 @@ class SessionPersistenceMixin:
             if entry is None:
                 return
             serialized = dict(entry_data) if entry_data is not None else entry.to_dict()
+            # F7.4.6: this UPSERT is the per-turn fast path (mark_turn_active goes through here), so
+            # the redaction has to sit on the serialized copy, not only on the whole-index snapshot.
+            serialized = redigir_entrada_sessao(serialized)
             # The O(n) full snapshot is deferred to the fallback branch.
             entry_json, revision = json.dumps(serialized), self._next_routing_generation_locked()
         saver = self._routing_db_method("save_gateway_routing_entry")
@@ -645,7 +658,7 @@ class SessionPersistenceMixin:
             # Full-snapshot fallback carrying the candidate transition.
             with guard:
                 fallback_data = self._entries_as_dicts()
-            fallback_data[session_key] = dict(entry_data)
+            fallback_data[session_key] = redigir_entrada_sessao(dict(entry_data))
             self._persist_routing_data(fallback_data, revision)
         else:
             self._save_entries()

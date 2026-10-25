@@ -231,7 +231,12 @@ def test_state_db_commit_survives_legacy_mirror_failure(tmp_path):
 
     reloaded = _make_db_store(tmp_path)
     recovered = _entry_for(reloaded, source)
-    assert recovered.active_turn_token == token
+    # F7.4.6: o token do turno não mora em disco. O reload lê a MARCA — que é o que
+    # recover_interrupted_turns()/clear_turn_active() consomem daqui em diante —, e o resto da
+    # entrada (origem, session_id, started_at) chega inteiro: é o que prova a durabilidade.
+    assert recovered.active_turn_token == "[REDACTED]"
+    assert recovered.active_turn_started_at is not None
+    assert recovered.session_id == entry.session_id
     _close_store_db(reloaded)
 
 

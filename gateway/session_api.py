@@ -8,6 +8,8 @@ from gateway.config import Platform
 from gateway.session import SessionEntry, SessionSource, _is_path_unsafe
 from gateway.session_contract import SessionRef
 from hermes_state_runtime import RuntimeStoreError, _epoch, _json
+# F7.4.6: a entrada de rota gravada em gateway_routing nunca leva segredo.
+from hermes_secret_redaction import redigir_entrada_sessao
 
 from hermes_state_local import API_BINDING_PREFIX as _BINDING_PREFIX, API_DECLARED_PREFIX as _DECLARED_PREFIX
 
@@ -258,7 +260,7 @@ def bind_api_steps(authority, session_id, *, hosted_dispatch=None, declared_key=
                      (route, session_id, source.user_id, 'dm', _json(source.to_dict()), session_id))
         conn.execute("INSERT INTO gateway_routing(scope,session_key,entry_json,updated_at) VALUES('',?,?,?) "
                      'ON CONFLICT(scope,session_key) DO UPDATE SET entry_json=excluded.entry_json',
-                     (route, _json(entry.to_dict()), now.timestamp()))
+                     (route, _json(redigir_entrada_sessao(entry.to_dict())), now.timestamp()))
         conn.execute('INSERT INTO state_meta(key,value) VALUES(?,?)',
                      (_BINDING_PREFIX + session_id, _json(receipt)))
     yield partial(authority.db._execute_write, write)
