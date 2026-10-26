@@ -263,7 +263,8 @@ class _SlashWorker:
         # ``--provider`` pins the child to the parent agent's virtual provider: without it the
         # worker re-resolves provider from config, so a MoA session (provider=moa, model=<preset>)
         # dispatched its preset NAME to the configured real provider and 402/503'd (#57283).
-        argv = [sys.executable, "-m", "tui_gateway.slash_worker", "--session-key", session_key,
+        # -P: the worker runs in the user's cwd, which must not shadow tui_gateway/hermes_cli.
+        argv = [sys.executable, "-P", "-m", "tui_gateway.slash_worker", "--session-key", session_key,
                 "--parent-pid", str(os.getpid())] \
             + (["--model", model] if model else []) \
             + (["--provider", provider] if provider else [])

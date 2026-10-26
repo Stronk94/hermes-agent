@@ -1166,7 +1166,7 @@ def _spawn_gateway_restart_watcher(old_pid: int, run_argv: list[str], *, host: b
                      watcher_timeout_literal=json.dumps(GATEWAY_RESTART_WATCHER_TIMEOUT_S),
                      project_root_literal=json.dumps(str(PROJECT_ROOT)))
 
-    watcher_argv = [sys.executable, "-c", watcher, str(old_pid), *run_argv]
+    watcher_argv = [sys.executable, "-P", "-c", watcher, str(old_pid), *run_argv]
     devnull = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
     # Host respawn must not inherit a named launcher's dotenv. The watcher copies os.environ
     # into the gateway child, so the scrub has to be the watcher's own environ.
